@@ -1,0 +1,426 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  DocLift on ECS: one EC2 container instance running the web, backend and Postgres
+  containers, images in ECR, CloudFront in front for HTTPS, and a GitHub Actions deploy role.
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    Description: EC2 instance type for the single container instance.
+  EcsAmi:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id
+  DesiredCount:
+    Type: Number
+    Default: 0
+    AllowedValues: [0, 1]
+    Description: 0 until the first images have been pushed to ECR, then 1.
+  DbPasswordParameter:
+    Type: String
+    Default: /liftdoc/db-password
+    Description: Name of the SSM SecureString parameter holding the Postgres password.
+  CloudFrontPrefixListId:
+    Type: String
+    Description: ID of the com.amazonaws.global.cloudfront.origin-facing prefix list in this region.
+  GitHubSubjects:
+    Type: CommaDelimitedList
+    Description: OIDC subject claims allowed to deploy (legacy and immutable forms of the main branch).
+  CreateOidcProvider:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: false when the account already has the GitHub Actions OIDC provider.
+
+Conditions:
+  IsUsEast1: !Equals [!Ref "AWS::Region", us-east-1]
+  NewOidcProvider: !Equals [!Ref CreateOidcProvider, "true"]
+
+Resources:
+  # ── Network: one public subnet, no NAT gateway ──────────────────────────────
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref "AWS::StackName"
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+  Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  SubnetRoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet
+      RouteTableId: !Ref RouteTable
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: DocLift container instance; HTTP from CloudFront only, no SSH
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourcePrefixListId: !Ref CloudFrontPrefixListId
+          Description: CloudFront origin-facing servers
+
+  # ── Image registry ──────────────────────────────────────────────────────────
+  BackendRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${AWS::StackName}-backend"
+      EmptyOnDelete: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {"rules":[{"rulePriority":1,"description":"Keep the newest image only",
+            "selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":1},
+            "action":{"type":"expire"}}]}
+  WebRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${AWS::StackName}-web"
+      EmptyOnDelete: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {"rules":[{"rulePriority":1,"description":"Keep the newest image only",
+            "selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":1},
+            "action":{"type":"expire"}}]}
+
+  # ── Container instance ──────────────────────────────────────────────────────
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref "AWS::StackName"
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+        # Shell access through Session Manager instead of an open SSH port.
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref InstanceRole]
+  Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: [DefaultRoute, SubnetRoute]
+    Properties:
+      ImageId: !Ref EcsAmi
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !Ref Subnet
+      SecurityGroupIds: [!Ref InstanceSecurityGroup]
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 30
+            VolumeType: gp3
+            Encrypted: true
+      MetadataOptions:
+        HttpTokens: required
+        HttpPutResponseHopLimit: 2
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          echo "ECS_CLUSTER=${Cluster}" >> /etc/ecs/ecs.config
+          # Conversions of large PDFs can exceed a small instance's RAM; swap keeps them alive.
+          if [ ! -f /swapfile ]; then
+            dd if=/dev/zero of=/swapfile bs=1M count=2048
+            chmod 600 /swapfile
+            mkswap /swapfile
+            swapon /swapfile
+            echo "/swapfile none swap sw 0 0" >> /etc/fstab
+          fi
+      Tags:
+        - Key: Name
+          Value: !Ref "AWS::StackName"
+  # A fixed address so the CloudFront origin survives an instance stop/start.
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    DependsOn: GatewayAttachment
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref Instance
+
+  # ── Service ─────────────────────────────────────────────────────────────────
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/ecs/${AWS::StackName}"
+      RetentionInDays: 14
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: read-db-password
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameters
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DbPasswordParameter}"
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref "AWS::StackName"
+      RequiresCompatibilities: [EC2]
+      NetworkMode: bridge
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      Volumes:
+        # Named Docker volumes on the instance's disk; they outlive task restarts and deploys.
+        - Name: pgdata
+          DockerVolumeConfiguration:
+            Scope: shared
+            Autoprovision: true
+            Driver: local
+        - Name: uploads
+          DockerVolumeConfiguration:
+            Scope: shared
+            Autoprovision: true
+            Driver: local
+      ContainerDefinitions:
+        - Name: db
+          Image: public.ecr.aws/docker/library/postgres:16-alpine
+          Essential: true
+          MemoryReservation: 128
+          Environment:
+            - Name: POSTGRES_DB
+              Value: doclift
+            - Name: POSTGRES_USER
+              Value: doclift
+          Secrets:
+            - Name: POSTGRES_PASSWORD
+              ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DbPasswordParameter}"
+          MountPoints:
+            - SourceVolume: pgdata
+              ContainerPath: /var/lib/postgresql/data
+          HealthCheck:
+            Command: [CMD-SHELL, pg_isready -U doclift -d doclift]
+            Interval: 10
+            Timeout: 5
+            Retries: 10
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: app
+        - Name: backend
+          Image: !Sub "${BackendRepository.RepositoryUri}:latest"
+          Essential: true
+          MemoryReservation: 384
+          Links: [db]
+          DependsOn:
+            - ContainerName: db
+              Condition: HEALTHY
+          Environment:
+            - Name: DB_HOST
+              Value: db
+            - Name: DB_NAME
+              Value: doclift
+            - Name: DB_USERNAME
+              Value: doclift
+            - Name: APP_UPLOAD_DIRECTORY
+              Value: /app/uploads
+            - Name: APP_CORS_ALLOWED_ORIGINS
+              Value: !Sub "https://${Distribution.DomainName}"
+          Secrets:
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DbPasswordParameter}"
+          MountPoints:
+            - SourceVolume: uploads
+              ContainerPath: /app/uploads
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4)"
+            Interval: 15
+            Timeout: 5
+            Retries: 5
+            StartPeriod: 30
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: app
+        - Name: web
+          # Built with BACKEND_URL=http://backend:8080, which the link below resolves.
+          Image: !Sub "${WebRepository.RepositoryUri}:latest"
+          Essential: true
+          MemoryReservation: 128
+          Links: [backend]
+          DependsOn:
+            - ContainerName: backend
+              Condition: HEALTHY
+          PortMappings:
+            - ContainerPort: 3000
+              HostPort: 80
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: app
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: Instance
+    Properties:
+      ServiceName: !Ref "AWS::StackName"
+      Cluster: !Ref Cluster
+      LaunchType: EC2
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: !Ref DesiredCount
+      # One instance and a fixed host port: the old task must stop before the new one starts.
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 0
+        MaximumPercent: 100
+
+  # ── Public HTTPS address ────────────────────────────────────────────────────
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Ref "AWS::StackName"
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: app
+            # CloudFront needs a host name, so derive the Elastic IP's public DNS name.
+            DomainName: !Sub
+              - "ec2-${Dashed}.${Suffix}"
+              - Dashed: !Join ["-", !Split [".", !GetAtt ElasticIp.PublicIp]]
+                Suffix: !If
+                  - IsUsEast1
+                  - compute-1.amazonaws.com
+                  - !Sub "${AWS::Region}.compute.amazonaws.com"
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+              HTTPPort: 80
+              OriginReadTimeout: 60
+        DefaultCacheBehavior:
+          TargetOriginId: app
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+          Compress: true
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Managed-CachingDisabled
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # Managed-AllViewerExceptHostHeader
+        CacheBehaviors:
+          - PathPattern: /_next/static/*
+            TargetOriginId: app
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # Managed-CachingOptimized
+
+  # ── GitHub Actions deploy role (OIDC, no stored keys) ───────────────────────
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: NewOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - NewOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Ref GitHubSubjects
+      Policies:
+        - PolicyName: push-images-and-redeploy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:CompleteLayerUpload
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource:
+                  - !GetAtt BackendRepository.Arn
+                  - !GetAtt WebRepository.Arn
+              - Effect: Allow
+                Action:
+                  - ecs:DescribeServices
+                  - ecs:UpdateService
+                Resource: !Ref Service
+
+Outputs:
+  Url:
+    Value: !Sub "https://${Distribution.DomainName}"
+  DeployRoleArn:
+    Value: !GetAtt DeployRole.Arn
+  BackendRepositoryUri:
+    Value: !GetAtt BackendRepository.RepositoryUri
+  WebRepositoryUri:
+    Value: !GetAtt WebRepository.RepositoryUri
+  ClusterName:
+    Value: !Ref Cluster
+  ServiceName:
+    Value: !GetAtt Service.Name
+  InstanceId:
+    Value: !Ref Instance

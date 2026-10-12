@@ -34,3 +34,7 @@ cd apps/web && npm run lint && npm test
 
 Both suites run in GitHub Actions on every pull request and on pushes to `main`.
 See the [backend README](apps/backend-py/README.md) for configuration, the conversion pipeline and the QA tool.
+
+## Deploying
+
+The app runs on AWS (ECS, ECR and CloudFront). See [infra/aws/](infra/aws/README.md) for setup; merges to `main` deploy automatically.
