@@ -15,7 +15,7 @@ permissions:
 
 defaults:
   run:
-    working-directory: web
+    working-directory: apps/web
 
 jobs:
   check:
@@ -26,7 +26,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
       - run: npm run lint
       - run: npm test

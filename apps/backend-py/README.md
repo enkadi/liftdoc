@@ -223,7 +223,7 @@ tests are skipped. The renderer is a development tool, not part of the runtime t
 
 **Repository layout.** This checkout has the frontend at `web/` (not `apps/web/`) and contains no
 `docker-compose.yml`, `caddy/` directory or `apps/backend`. The contract was cross-checked against
-`web/src/lib/{uploadApi,jobApi,pollingApi,downloadApi}.ts`. Because there is no compose file to
+`apps/web/src/lib/{uploadApi,jobApi,pollingApi,downloadApi}.ts`. Because there is no compose file to
 edit, the `backend` service block is given above and `docker-compose.dev.yml` runs
 Postgres + backend standalone.
 
