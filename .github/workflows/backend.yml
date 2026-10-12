@@ -1,0 +1,76 @@
+name: Backend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: apps/backend-py
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/backend-py/uv.lock
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/backend-py/uv.lock
+      - run: uv sync --frozen
+      # SQLite; the rendered visual tests skip themselves because no renderer is installed.
+      - run: uv run pytest
+
+  test-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: doclift
+          POSTGRES_USER: doclift
+          POSTGRES_PASSWORD: doclift
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U doclift -d doclift"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/backend-py/uv.lock
+      - run: uv sync --frozen
+      - run: uv run pytest tests/test_api.py tests/test_jobs.py
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://doclift:doclift@localhost:5432/doclift
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t doclift-backend:ci .
