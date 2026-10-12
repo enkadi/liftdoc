@@ -1,0 +1,55 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/**
+      - .github/workflows/deploy.yml
+  workflow_dispatch:
+
+# Never run two deploys at once, and never cancel one halfway.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # lets the job sign in to AWS through OIDC; no keys are stored in GitHub
+
+jobs:
+  deploy:
+    # Skipped until infra/aws/setup.sh has created the stack and set the repository variables.
+    if: vars.AWS_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push backend image
+        run: |
+          docker build -t "$ECR_BACKEND:latest" apps/backend-py
+          docker push "$ECR_BACKEND:latest"
+        env:
+          ECR_BACKEND: ${{ vars.ECR_BACKEND }}
+
+      - name: Build and push web image
+        # The Next.js proxy target is fixed at build time; "backend" is the container link name.
+        run: |
+          docker build --build-arg BACKEND_URL=http://backend:8080 -t "$ECR_WEB:latest" apps/web
+          docker push "$ECR_WEB:latest"
+        env:
+          ECR_WEB: ${{ vars.ECR_WEB }}
+
+      - name: Restart the service on the new images
+        run: |
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
+            --desired-count 1 --force-new-deployment --query service.serviceName --output text
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+        env:
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_SERVICE: ${{ vars.ECS_SERVICE }}
