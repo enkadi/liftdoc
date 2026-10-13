@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { JobStatusResponse } from "@/lib/pollingApi";
+import type { JobStatusResponse } from "@/lib/jobApi";
 import type { ConversionSession } from "@/lib/conversionSession";
 
 const mocks = vi.hoisted(() => ({

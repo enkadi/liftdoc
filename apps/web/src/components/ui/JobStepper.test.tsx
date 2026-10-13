@@ -7,7 +7,7 @@ import JobStepper, {
   getProgressCeiling,
   JOB_STEPS,
 } from "./JobStepper";
-import type { JobStatusResponse } from "@/lib/pollingApi";
+import type { JobStatusResponse } from "@/lib/jobApi";
 
 function makeJob(overrides: Partial<JobStatusResponse> = {}): JobStatusResponse {
   return {

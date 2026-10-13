@@ -5,7 +5,7 @@ import {
   getJobStatus,
   JobStatusError,
   type JobStatusResponse,
-} from "@/lib/pollingApi";
+} from "@/lib/jobApi";
 
 const FINAL_STATUSES: JobStatusResponse["status"][] = ["DONE", "FAILED"];
 export const POLL_INTERVAL_MS = 3000;

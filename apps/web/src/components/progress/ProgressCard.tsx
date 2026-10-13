@@ -14,7 +14,7 @@ import ErrorStateCard from "./ErrorStateCard";
 
 import { useConversion } from "@/context/ConversionContext";
 import { useSmoothedProgress } from "@/app/hooks/useSmoothedProgress";
-import type { JobStatusResponse } from "@/lib/pollingApi";
+import type { JobStatusResponse } from "@/lib/jobApi";
 
 interface ProgressCardProps {
   job: JobStatusResponse | null;

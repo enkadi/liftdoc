@@ -7,7 +7,7 @@ import {
   Table,
 } from "lucide-react";
 import Stepper, { type Step, type StepTag } from "./Stepper";
-import type { JobPhase, JobStatusResponse } from "@/lib/pollingApi";
+import type { JobPhase, JobStatusResponse } from "@/lib/jobApi";
 
 export interface JobStepTemplate {
   phase: JobPhase;

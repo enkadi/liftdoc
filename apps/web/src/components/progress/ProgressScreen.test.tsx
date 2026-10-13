@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import ProgressScreen from "./ProgressScreen";
 import { ConversionProvider, useConversion } from "@/context/ConversionContext";
 import { saveConversionSession, clearConversionSession } from "@/lib/conversionSession";
-import type { JobStatusResponse } from "@/lib/pollingApi";
+import type { JobStatusResponse } from "@/lib/jobApi";
 
 const mocks = vi.hoisted(() => ({
   job: null as JobStatusResponse | null,

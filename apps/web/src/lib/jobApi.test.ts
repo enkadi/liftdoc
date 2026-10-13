@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { getJobStatus, JobStatusResponse } from "./jobApi";
+import { getJobStatus, JobStatusError, JobStatusResponse } from "./jobApi";
 
 describe("jobApi", () => {
   const originalFetch = globalThis.fetch;
@@ -35,6 +35,7 @@ describe("jobApi", () => {
       const [url, options] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(url).toBe("/api/v1/jobs/123e4567-e89b-12d3-a456-426614174000");
       expect(options.method).toBe("GET");
+      expect(options.cache).toBe("no-store");
     });
 
     it("handles 404 with custom backend error message", async () => {
@@ -50,6 +51,7 @@ describe("jobApi", () => {
       await expect(getJobStatus("non-existent-id")).rejects.toThrow(
         "No conversion job found with the given ID."
       );
+      await expect(getJobStatus("non-existent-id")).rejects.toBeInstanceOf(JobStatusError);
     });
 
     it("handles 404 with fallback message when json body is missing", async () => {
