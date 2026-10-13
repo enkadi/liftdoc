@@ -32,14 +32,6 @@ export function getAbandonModalContent(session: ConversionSession | null) {
         };
     }
 
-    if (status === "failed") {
-        return {
-            title: "Previous Conversion Failed",
-            description: `Your conversion for "${fileName}" failed. Do you want to restart the conversion?`,
-            confirmText: "Restart Conversion",
-        };
-    }
-
     return {
         title: "Abandon Active Session?",
         description: `You have an active session for "${fileName}". Are you sure you want to abandon it and start a new conversion?`,

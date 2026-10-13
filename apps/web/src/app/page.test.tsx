@@ -69,7 +69,7 @@ describe("Home", () => {
     expect(screen.queryByTestId("upload-screen")).not.toBeInTheDocument();
   });
 
-  it("recovers stored 'failed' session and renders the progress screen", () => {
+  it("cleans up a stored 'failed' session and renders the upload screen", () => {
     saveConversionSession({
       jobId: "job_failed",
       fileName: "report.pdf",
@@ -83,8 +83,9 @@ describe("Home", () => {
       </ConversionProvider>,
     );
 
-    expect(screen.getByTestId("progress-screen")).toBeInTheDocument();
-    expect(screen.queryByTestId("upload-screen")).not.toBeInTheDocument();
+    expect(screen.getByTestId("upload-screen")).toBeInTheDocument();
+    expect(screen.queryByTestId("progress-screen")).not.toBeInTheDocument();
+    expect(getConversionSession()).toBeNull();
   });
 
   it("cleans up expired sessions and renders the upload screen", () => {
