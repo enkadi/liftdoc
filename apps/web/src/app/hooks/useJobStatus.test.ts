@@ -103,4 +103,66 @@ describe("useJobStatus", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("stops polling and flags consecutiveErrorsExceeded after reaching maximum consecutive errors", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}, 500));
+    globalThis.fetch = fetchMock;
+
+    const { result } = renderHook(() => useJobStatus("job-1", 1000, 3));
+
+    await act(async () => {});
+    expect(result.current.consecutiveErrorsExceeded).toBe(false);
+
+    // Attempt 2
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(result.current.consecutiveErrorsExceeded).toBe(false);
+
+    // Attempt 3 -> reaches limit
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(result.current.consecutiveErrorsExceeded).toBe(true);
+
+    // Polling must stop - advancing further should not trigger additional fetches
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("resets consecutive error count when a poll succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({}, 500))
+      .mockResolvedValueOnce(jsonResponse({}, 500))
+      .mockResolvedValueOnce(jsonResponse(processing))
+      .mockResolvedValueOnce(jsonResponse({}, 500));
+    globalThis.fetch = fetchMock;
+
+    const { result } = renderHook(() => useJobStatus("job-1", 1000, 3));
+
+    // Attempt 1 (error)
+    await act(async () => {});
+    // Attempt 2 (error)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(result.current.consecutiveErrorsExceeded).toBe(false);
+
+    // Attempt 3 (success) -> resets counter
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(result.current.job?.status).toBe("PROCESSING");
+    expect(result.current.consecutiveErrorsExceeded).toBe(false);
+
+    // Attempt 4 (error 1 of 3, not error 3)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(result.current.consecutiveErrorsExceeded).toBe(false);
+  });
 });
+

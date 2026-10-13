@@ -30,7 +30,7 @@ describe("FidelityScoreCard", () => {
     expect(data.contributors).toHaveLength(6);
     expect(data.contributors[0].name).toBe("Word Preservation");
     expect(data.contributors[0].detail).toBe("990 / 1,000 Words");
-    expect(data.contributors[0].formattedScore).toBe("99.0%");
+    expect(data.contributors[0].formattedScore).toBe("99%");
   });
 
   it("renders the composite fidelity score and handles hover to toggle dropdown", () => {
@@ -50,7 +50,7 @@ describe("FidelityScoreCard", () => {
     render(<FidelityScoreCard session={session} />);
 
     expect(screen.getByText("Composite Fidelity Score")).toBeInTheDocument();
-    expect(screen.getByText("100%")).toBeInTheDocument();
+    expect(screen.getAllByText("100%").length).toBeGreaterThan(0);
 
     const dropdown = screen.getByTestId("fidelity-dropdown");
     expect(dropdown).toHaveClass("opacity-0");

@@ -14,7 +14,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/app/hooks/useJobStatus", () => ({
   useJobStatus: (jobId: string | null) => {
     mocks.useJobStatus(jobId);
-    return { job: mocks.job, error: null, notFound: false };
+    return {
+      job: mocks.job,
+      error: null,
+      notFound: false,
+      consecutiveErrorsExceeded: false,
+    };
   },
 }));
 

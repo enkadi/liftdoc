@@ -19,9 +19,14 @@ import type { JobStatusResponse } from "@/lib/jobApi";
 interface ProgressCardProps {
   job: JobStatusResponse | null;
   notFound: boolean;
+  consecutiveErrorsExceeded?: boolean;
 }
 
-const ProgressCard = ({ job, notFound }: ProgressCardProps) => {
+const ProgressCard = ({
+  job,
+  notFound,
+  consecutiveErrorsExceeded = false,
+}: ProgressCardProps) => {
   const { updateStatus, session } = useConversion();
   const isActive =
     session?.status === "queued" || session?.status === "processing";
@@ -39,7 +44,9 @@ const ProgressCard = ({ job, notFound }: ProgressCardProps) => {
       updateStatusRef.current("done", job ?? undefined);
     } else if (jobStatus === "FAILED") {
       updateStatusRef.current("failed");
-      toast.error("Conversion failed");
+      toast.error("Conversion Failed", {
+        description: "The document could not be converted. Please try again or check recommended fixes.",
+      });
     } else if (jobStatus === "PROCESSING" && session?.status === "queued") {
       updateStatusRef.current("processing");
     }
@@ -48,9 +55,26 @@ const ProgressCard = ({ job, notFound }: ProgressCardProps) => {
   useEffect(() => {
     if (notFound && isActive) {
       updateStatusRef.current("failed");
-      toast.error("Conversion job could not be found");
+      toast.error("Conversion job not found", {
+        description: "The conversion job could not be found on the server. Please try uploading again.",
+      });
     }
   }, [notFound, isActive]);
+
+  useEffect(() => {
+    if (consecutiveErrorsExceeded && isActive) {
+      updateStatusRef.current("failed");
+      toast.error("Connection Lost", {
+        description: "Lost connection to the server after multiple attempts. Please try again.",
+      });
+    }
+  }, [consecutiveErrorsExceeded, isActive]);
+
+  const failureReason = notFound
+    ? "The conversion job could not be found on the server. Please try uploading again."
+    : consecutiveErrorsExceeded
+      ? "Unable to reach the conversion server after multiple attempts. Please check your connection and retry the conversion."
+      : undefined;
 
   const totalSteps = JOB_STEPS.length;
   const activeIndex = getActiveStepIndex(job);
@@ -69,7 +93,7 @@ const ProgressCard = ({ job, notFound }: ProgressCardProps) => {
       : `${JOB_STEPS[currentStepIndex].description}...`;
 
   if (session?.status === "failed") {
-    return <ErrorStateCard />;
+    return <ErrorStateCard error={failureReason} />;
   }
 
   return (
