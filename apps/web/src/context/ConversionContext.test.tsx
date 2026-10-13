@@ -3,10 +3,7 @@ import { render, renderHook, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ConversionProvider, useConversion } from "./ConversionContext";
 import type { ConversionSession } from "@/lib/conversionSession";
-import type { JobStatusResponse } from "@/lib/jobApi";
 import { toast } from "sonner";
-
-let pollingOnComplete: ((data: JobStatusResponse) => void) | undefined;
 
 vi.mock("sonner", () => ({
   toast: {
@@ -14,12 +11,6 @@ vi.mock("sonner", () => ({
     success: vi.fn(),
     warning: vi.fn(),
     info: vi.fn(),
-  },
-}));
-
-vi.mock("@/lib/useJobPolling", () => ({
-  useJobPolling: (options: { onComplete?: (data: JobStatusResponse) => void }) => {
-    pollingOnComplete = options.onComplete;
   },
 }));
 
@@ -319,12 +310,10 @@ describe("useConversion", () => {
 
   it("shows success and auto-purge warning toasts on completion", () => {
     vi.useFakeTimers();
-    renderHook(() => useConversion(), { wrapper });
-
-    expect(pollingOnComplete).toBeDefined();
+    const { result } = renderHook(() => useConversion(), { wrapper });
 
     act(() => {
-      pollingOnComplete?.({
+      result.current.updateStatus("done", {
         jobId: "job-123",
         status: "DONE",
         sourceFilename: "doc.pdf",

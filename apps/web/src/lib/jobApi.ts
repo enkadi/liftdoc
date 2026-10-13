@@ -54,6 +54,16 @@ export interface JobStatusResponse {
 
 export type { ApiErrorResponse };
 
+export class JobStatusError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "JobStatusError";
+  }
+}
+
 async function extractErrorMessage(response: Response): Promise<string | null> {
   try {
     const errorData: ApiErrorResponse = await response.json();
@@ -73,6 +83,7 @@ export async function getJobStatus(
   try {
     const response = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}`, {
       method: "GET",
+      cache: "no-store",
       signal,
     });
 
@@ -80,11 +91,12 @@ export async function getJobStatus(
       const backendMessage = await extractErrorMessage(response);
 
       if (response.status === 404) {
-        throw new Error(backendMessage ?? "Job not found.");
+        throw new JobStatusError(backendMessage ?? "Job not found.", 404);
       }
 
-      throw new Error(
-        backendMessage ?? `Failed to fetch job status (status code ${response.status}).`
+      throw new JobStatusError(
+        backendMessage ?? `Failed to fetch job status (status code ${response.status}).`,
+        response.status
       );
     }
 

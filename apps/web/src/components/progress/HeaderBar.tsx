@@ -3,7 +3,7 @@ import { FileInput, ArrowRight, FileTypeCorner, Timer } from "lucide-react";
 import { Spinner } from "../ui/Spinner";
 import FileInfoCard from "./FileInfoCard";
 import { useConversion } from "@/context/ConversionContext";
-import { JobStatusResponse } from "@/lib/pollingApi";
+import type { JobStatusResponse } from "@/lib/jobApi";
 
 export interface HeaderBarProps {
   file: File | null;
