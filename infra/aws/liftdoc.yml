@@ -223,7 +223,8 @@ Resources:
             Autoprovision: true
             Driver: local
       ContainerDefinitions:
-        - Name: db
+        # Not named "db": Docker links would inject DB_PORT=tcp://… and clobber the backend setting.
+        - Name: postgres
           Image: public.ecr.aws/docker/library/postgres:16-alpine
           Essential: true
           MemoryReservation: 128
@@ -253,13 +254,13 @@ Resources:
           Image: !Sub "${BackendRepository.RepositoryUri}:latest"
           Essential: true
           MemoryReservation: 384
-          Links: [db]
+          Links: [postgres]
           DependsOn:
-            - ContainerName: db
+            - ContainerName: postgres
               Condition: HEALTHY
           Environment:
             - Name: DB_HOST
-              Value: db
+              Value: postgres
             - Name: DB_NAME
               Value: doclift
             - Name: DB_USERNAME
