@@ -5,7 +5,7 @@ One CloudFormation stack ([liftdoc.yml](liftdoc.yml)) creates everything:
 | Piece | What runs there |
 |---|---|
 | ECR | Two image repositories, `liftdoc-backend` and `liftdoc-web` |
-| ECS on one EC2 instance | One task with three containers: `web` (Next.js), `backend` (FastAPI) and `db` (Postgres 16) |
+| ECS on one EC2 instance | One task with three containers: `web` (Next.js), `backend` (FastAPI) and `postgres` (Postgres 16) |
 | Instance disk | Two Docker volumes: the Postgres data and the uploaded/converted files |
 | CloudFront | The public HTTPS address (`https://….cloudfront.net`); the instance accepts traffic from CloudFront only |
 | IAM role for GitHub Actions | Lets the `Deploy` workflow push images and restart the service; signs in with OIDC, so no AWS keys are stored in GitHub |
