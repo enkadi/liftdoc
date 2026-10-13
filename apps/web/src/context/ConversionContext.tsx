@@ -155,7 +155,11 @@ export function ConversionProvider({ children }: { children: ReactNode }) {
                 output: completedJobData?.output ?? prevSession.output,
                 metrics: completedJobData?.metrics ?? prevSession.metrics,
             };
-            saveConversionSession(updatedSession);
+            if (status !== "failed") {
+                saveConversionSession(updatedSession);
+            } else {
+                clearConversionSession();
+            }
             return updatedSession;
         });
 
@@ -289,7 +293,9 @@ export function ConversionProvider({ children }: { children: ReactNode }) {
     };
 
     const requestReset = () => {
-        if (session || isUploading) {
+        if (session?.status === "failed") {
+            resetKeepFile();
+        } else if (session || isUploading) {
             setIsAbandonModalOpen(true);
         } else {
             reset();
@@ -297,11 +303,7 @@ export function ConversionProvider({ children }: { children: ReactNode }) {
     };
 
     const handleConfirmAbandon = () => {
-        if (session?.status === "failed") {
-            resetKeepFile();
-        } else {
-            reset();
-        }
+        reset();
     };
 
     const openAbandonModal = useCallback(() => setIsAbandonModalOpen(true), []);
@@ -347,11 +349,11 @@ export function ConversionProvider({ children }: { children: ReactNode }) {
                 } else if (storedSession.createdAt) {
                     setTimeElapsed(Math.max(0, Math.floor((Date.now() - storedSession.createdAt) / 1000)));
                 }
-                if (storedSession.status === "processing" || storedSession.status === "queued" || storedSession.status === "failed") {
+                if (storedSession.status === "processing" || storedSession.status === "queued") {
                     setActiveView("progress");
                 } else if (storedSession.status === "done") {
                     setActiveView("result");
-                } else if (storedSession.status === "expired") {
+                } else if (storedSession.status === "failed" || storedSession.status === "expired") {
                     clearConversionSession();
                     setSession(null);
                     setActiveView("upload");

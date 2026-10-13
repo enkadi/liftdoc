@@ -34,18 +34,6 @@ describe("getAbandonModalContent helper", () => {
         expect(content.confirmText).toBe("Abandon & Start New");
     });
 
-    it("returns failed session text for failed status", () => {
-        const session: ConversionSession = {
-            jobId: "j3",
-            fileName: "data.pdf",
-            status: "failed",
-            updatedAt: Date.now(),
-        };
-        const content = getAbandonModalContent(session);
-        expect(content.title).toBe("Previous Conversion Failed");
-        expect(content.description).toContain('conversion for "data.pdf" failed');
-        expect(content.confirmText).toBe("Restart Conversion");
-    });
 });
 
 describe("AbandonSessionModal component", () => {
@@ -219,7 +207,7 @@ describe("ConversionContext integration with requestReset and AbandonSessionModa
         expect(screen.queryByTestId("abandon-session-modal")).not.toBeInTheDocument();
     });
 
-    it("retains file when confirming abandon for a failed session", async () => {
+    it("requestReset on a failed session skips the modal and navigates to upload keeping the file", async () => {
         globalThis.fetch = vi.fn().mockResolvedValue({
             ok: true,
             status: 201,
@@ -260,9 +248,7 @@ describe("ConversionContext integration with requestReset and AbandonSessionModa
 
         await user.click(screen.getByRole("button", { name: "Request Reset" }));
 
-        expect(screen.getByRole("heading", { name: "Previous Conversion Failed" })).toBeInTheDocument();
-
-        await user.click(screen.getByRole("button", { name: "Restart Conversion" }));
+        expect(screen.queryByTestId("abandon-session-modal")).not.toBeInTheDocument();
 
         expect(screen.getByTestId("active-view")).toHaveTextContent("upload");
         expect(screen.getByTestId("file-name")).toHaveTextContent("failed.pdf");
