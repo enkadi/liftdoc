@@ -16,6 +16,10 @@ export interface FidelityScoreCardProps {
   session?: ConversionSession | null;
 }
 
+function formatFidelityPercentage(value: number): string {
+  return `${Number(value.toFixed(1))}%`;
+}
+
 export function computeFidelityScoreData(session?: ConversionSession | null) {
   const sourceWords = session?.metrics?.sourceWordCount;
   const outputWords = session?.metrics?.outputWordCount;
@@ -43,7 +47,7 @@ export function computeFidelityScoreData(session?: ConversionSession | null) {
       name: "Word Preservation",
       detail: `${outputWords.toLocaleString()} / ${sourceWords.toLocaleString()} Words`,
       score,
-      formattedScore: `${score.toFixed(1)}%`,
+      formattedScore: formatFidelityPercentage(score),
     });
   }
 
@@ -56,7 +60,7 @@ export function computeFidelityScoreData(session?: ConversionSession | null) {
       name: "Page Pagination",
       detail: `${outputPages} / ${inputPages} Pages`,
       score,
-      formattedScore: `${score.toFixed(1)}%`,
+      formattedScore: formatFidelityPercentage(score),
     });
   }
 
@@ -69,7 +73,7 @@ export function computeFidelityScoreData(session?: ConversionSession | null) {
       name: "List Reconstruction",
       detail: `${reconstructedLists} / ${detectedLists} Lists`,
       score,
-      formattedScore: `${score.toFixed(1)}%`,
+      formattedScore: formatFidelityPercentage(score),
     });
   }
 

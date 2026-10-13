@@ -80,9 +80,13 @@ export function ConversionProvider({ children }: { children: ReactNode }) {
             saveDraftFile(newFile).then((saved) => {
                 if (!saved) {
                     if (typeof toast?.warning === "function") {
-                        toast.warning("Could not save file draft for page refresh recovery.");
+                        toast.warning("Draft Save Failed", {
+                            description: "Could not save file draft for page refresh recovery.",
+                        });
                     } else if (typeof toast?.error === "function") {
-                        toast.error("Could not save file draft for page refresh recovery.");
+                        toast.error("Draft Save Failed", {
+                            description: "Could not save file draft for page refresh recovery.",
+                        });
                     }
                 }
             });
@@ -261,7 +265,9 @@ export function ConversionProvider({ children }: { children: ReactNode }) {
                 saveConversionSession(newSession);
             } catch (storageErr) {
                 console.warn("Could not persist conversion session to storage:", storageErr);
-                toast.warning("Progress may be lost if the page is refreshed.");
+                toast.warning("Storage Warning", {
+                    description: "Progress may be lost if the page is refreshed.",
+                });
             }
 
             setSession(newSession);

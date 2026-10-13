@@ -8,7 +8,9 @@ const ProgressScreen = () => {
   const { file, session, setActiveView, timeElapsed } = useConversion();
   const isActive =
     session?.status === "queued" || session?.status === "processing";
-  const { job, notFound } = useJobStatus(isActive ? session.jobId : null);
+  const { job, notFound, consecutiveErrorsExceeded } = useJobStatus(
+    isActive ? session.jobId : null,
+  );
 
   const timeRemaining =
     session?.status === "done" ? 0 : (job?.estimatedRemainingSeconds ?? null);
@@ -33,7 +35,11 @@ const ProgressScreen = () => {
           timeRemaining={timeRemaining}
         />
       )}
-      <ProgressCard job={job} notFound={notFound} />
+      <ProgressCard
+        job={job}
+        notFound={notFound}
+        consecutiveErrorsExceeded={consecutiveErrorsExceeded}
+      />
     </div>
   );
 };

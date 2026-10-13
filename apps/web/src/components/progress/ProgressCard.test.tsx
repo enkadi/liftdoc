@@ -112,7 +112,9 @@ describe("ProgressCard", () => {
     render(<ProgressCard job={mocks.job} notFound={mocks.notFound} />);
 
     expect(mocks.updateStatus).toHaveBeenCalledWith("failed");
-    expect(toast.error).toHaveBeenCalledWith("Conversion failed");
+    expect(toast.error).toHaveBeenCalledWith("Conversion Failed", {
+      description: expect.any(String),
+    });
   });
 
   it("marks the session failed when the job no longer exists", () => {
@@ -120,7 +122,26 @@ describe("ProgressCard", () => {
     render(<ProgressCard job={mocks.job} notFound={mocks.notFound} />);
 
     expect(mocks.updateStatus).toHaveBeenCalledWith("failed");
+    expect(toast.error).toHaveBeenCalledWith("Conversion job not found", {
+      description: expect.any(String),
+    });
   });
+
+  it("marks the session failed when consecutive polling errors are exceeded", () => {
+    render(
+      <ProgressCard
+        job={mocks.job}
+        notFound={false}
+        consecutiveErrorsExceeded={true}
+      />,
+    );
+
+    expect(mocks.updateStatus).toHaveBeenCalledWith("failed");
+    expect(toast.error).toHaveBeenCalledWith("Connection Lost", {
+      description: expect.any(String),
+    });
+  });
+
 
   it("renders the error state card when the session has failed", () => {
     mocks.session = makeSession({ status: "failed" });
